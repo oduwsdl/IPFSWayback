@@ -13,6 +13,8 @@ import datetime
 import logging
 import platform
 
+from enum import Enum, auto
+
 from urllib.request import urlopen
 from urllib.error import URLError
 
@@ -39,6 +41,13 @@ IPWBREPLAY_ADDRESS = 'localhost:5000'
 IPWBREPLAY_PORT = int(IPWBREPLAY_PORT)
 
 INDEX_FILE = os.path.join('samples', 'indexes', 'salam-home.cdxj')
+
+
+class MementoMatch(Enum):
+    WRONGKEY = auto()
+    RIGHTKEYWRONGDATE = auto()
+    EXACTMATCH = auto()
+
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
@@ -120,7 +129,7 @@ def compareVersions(versionA, versionB):
 
 
 def isCDXJMetadataRecord(cdxjLine):
-    return cdxjLine.strip()[:1] == '!'
+    return cdxjLine.strip()[:1] == b'!'
 
 
 def isLocalHosty(uri):
@@ -151,6 +160,9 @@ def setLocale():
 
 def digits14ToRFC1123(digits14):
     setLocale()
+    # Trim to 14-digits max for testing
+    if len(digits14) > 14:
+        digits14 = digits14[0:14]
     d = datetime.datetime.strptime(digits14, '%Y%m%d%H%M%S')
     return d.strftime('%a, %d %b %Y %H:%M:%S GMT')
 

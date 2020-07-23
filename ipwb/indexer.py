@@ -369,13 +369,13 @@ def pushBytesToIPFS(bytes):
     try:
         res = ipfs_client().add_bytes(bytes)  # bytes)
     except TypeError as err:
-        print('fail')
+        # print('fail')
         logError('IPFS_API had an issue pushing the item to IPFS')
         logError(sys.exc_info())
         logError(len(bytes))
         traceback.print_tb(sys.exc_info()[-1])
     except ipfsapi.exceptions.ConnectionError as connErr:
-        print('ConnErr')
+        # print('ConnErr')
         logError(sys.exc_info())
         traceback.print_tb(sys.exc_info()[-1])
         return

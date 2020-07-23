@@ -39,6 +39,7 @@ from .exceptions import IPFSDaemonNotAvailable
 from .util import unsurt, ipfs_client
 from .util import IPWBREPLAY_HOST, IPWBREPLAY_PORT
 from .util import INDEX_FILE
+from .util import MementoMatch
 
 from . import indexer
 
@@ -169,6 +170,103 @@ def showMementosForURIRs_sansJS():
     return redirect('/memento/*/' + urir, code=301)
 
 
+def bin_search(iter, key, datetime=None):
+    # Skip metadata lines
+    while iter.peek(1)[:1] == b'!':
+        iter.readline()
+
+    # Set the beginning position to the start of the first data line
+    left = iter.tell()
+    # Go to end of seek stream
+    iter.seek(0, 2)
+    right = iter.tell()  # Current position
+
+    lines = set()  # Prevents dupes
+    key = key.rstrip(b"/")
+
+    while (right - left > 1):
+        mid = (right + left) // 2
+        iter.seek(mid)
+        iter.readline()  # Purge rest of current line
+        line = iter.readline()  # Read the next full line
+
+        if len(line) == 0:
+            right = mid
+            continue
+
+        try:
+            surtk, datetimeK, rest = line.split(maxsplit=2)
+        except ValueError as e:
+            continue
+
+        surtk = surtk.rstrip(b"/")
+
+        matchDegree = get_match_degree(key, datetime, surtk, datetimeK)
+
+        if matchDegree == MementoMatch.RIGHTKEYWRONGDATE:
+            lines.add(line)
+            # Iterate further to get lines after selection point
+            nextLine = iter.readline()
+            while nextLine:
+                surtk, datetimeK, rest = nextLine.split(maxsplit=2)
+                surtk = surtk.rstrip(b"/")
+
+                matchDegree = get_match_degree(key, datetime, surtk, datetimeK)
+                if matchDegree == MementoMatch.RIGHTKEYWRONGDATE:
+                    lines.add(nextLine)
+                elif matchDegree == MementoMatch.EXACTMATCH:
+                    # Exact match found while iterating
+                    return [nextLine]
+                elif matchDegree == MementoMatch.WRONGKEY:
+                    # Matched keys exhausted
+                    break
+
+                nextLine = iter.readline()
+
+            # Continue searching until find first instance
+            right = mid
+        elif matchDegree == MementoMatch.EXACTMATCH:
+            return [line]
+        elif key > surtk:
+            left = mid
+        else:
+            right = mid
+
+    # Convert uniq set to list then sort and return
+    ret = sorted(list(lines))
+
+    return ret
+
+
+def get_match_degree(surt, datetime, surtK, datetimeK):
+    if surt == surtK:
+        datetimeK = datetimeK.decode()
+        if datetime is None or datetime is not None and datetime != datetimeK:
+            return MementoMatch.RIGHTKEYWRONGDATE
+        if datetime == datetimeK:
+            return MementoMatch.EXACTMATCH
+    else:
+        return MementoMatch.WRONGKEY
+
+
+def getCDXJLinesWithURIR(urir, indexPath, datetime=None):
+    """ Get all CDXJ records corresponding to a URI-R """
+    if not indexPath:
+        indexPath = ipwbUtils.getIPWBReplayIndexPath()
+    indexPath = getIndexFileFullPath(indexPath)
+
+    # Convert URI-R to surt
+    surtedURIR = surt.surt(urir, path_strip_trailing_slash_unless_empty=True)
+
+    fobj = open(indexPath, "rb")
+    res = bin_search(fobj, surtedURIR.encode(), datetime)
+    fobj.close()
+
+    if res is not None:
+        return res
+    return []
+
+
 @app.route('/memento/*/<path:urir>')
 def showMementosForURIRs(urir):
     urir = compile_target_uri(urir, request.query_string)
@@ -221,18 +319,20 @@ def resolveMemento(urir, datetime):
     indexPath = ipwbUtils.getIPWBReplayIndexPath()
 
     print(f'Getting CDXJ lines with the URI-R {urir} from {indexPath}')
-    cdxjLinesWithURIR = getCDXJLinesWithURIR(urir, indexPath)
+    cdxj_lines_with_urir = getCDXJLinesWithURIR(urir, indexPath)
 
-    closestLine = getCDXJLineClosestTo(datetime, cdxjLinesWithURIR)
+    closest_line = getCDXJLineClosestTo(datetime, cdxj_lines_with_urir)
 
-    if closestLine is None:
+    if closest_line is None or len(closest_line) == 0:
         msg = '<h1>ERROR 404</h1>'
         msg += f'<p>No captures found for {urir} at {datetime}.</p>'
 
         return Response(msg, status=404)
+    # else:  # If there is a byte string, conv to reg string for splitting
+    #    closest_line = closest_line.decode()
 
-    uri = unsurt(closestLine.split(' ')[0])
-    newDatetime = closestLine.split(' ')[1]
+    uri = unsurt(closest_line.split(' ')[0])
+    newDatetime = closest_line.split(' ')[1]
 
     linkHeader = getLinkHeaderAbbreviatedTimeMap(urir, newDatetime)
 
@@ -257,12 +357,13 @@ def showMemento(urir, datetime):
     except ValueError as e:
         msg = f'Expected a 4-14 digits valid datetime: {datetime}'
         return Response(msg, status=400)
-    resolvedMemento = resolveMemento(urir, datetime)
+
+    resolved_memento = resolveMemento(urir, datetime)
 
     # resolved to a 404, flask Response object returned instead of tuple
-    if isinstance(resolvedMemento, Response):
-        return resolvedMemento
-    (newDatetime, linkHeader, uri) = resolvedMemento
+    if isinstance(resolved_memento, Response):
+        return resolved_memento
+    (newDatetime, linkHeader, uri) = resolved_memento
 
     if newDatetime != datetime:
         resp = redirect(f'/memento/{newDatetime}/{urir}', code=302)
@@ -363,6 +464,7 @@ def showTimeMap(urir, format):
     indexPath = ipwbUtils.getIPWBReplayIndexPath()
 
     cdxjLinesWithURIR = getCDXJLinesWithURIR(urir, indexPath)
+
     tmContentType = ''
 
     hostAndPort = ipwbUtils.getIPWBReplayConfig()
@@ -602,17 +704,10 @@ def show_uri(path, datetime=None):
 
         return Response(errStr, status=503)
 
-    cdxjLine = ''
+    cdxj_line = ''
     try:
-        surtedURI = surt.surt(
-                     path, path_strip_trailing_slash_unless_empty=False)
         indexPath = ipwbUtils.getIPWBReplayIndexPath()
-
-        searchString = surtedURI
-        if datetime is not None:
-            searchString = surtedURI + ' ' + datetime
-
-        cdxjLine = getCDXJLine_binarySearch(searchString, indexPath)
+        cdxj_line = getCDXJLinesWithURIR(path, indexPath, datetime)
 
     except Exception as e:
         print(sys.exc_info()[0])
@@ -620,10 +715,13 @@ def show_uri(path, datetime=None):
                       f' <a href="http://{IPWBREPLAY_HOST}:{IPWBREPLAY_PORT}">'
                       f'Go home</a>')
         return Response(respString)
-    if cdxjLine is None:  # Resource not found in archives
+    if cdxj_line is None:  # Resource not found in archives
         return generateNoMementosInterface(path, datetime)
 
-    cdxjParts = cdxjLine.split(" ", 2)
+    if len(cdxj_line) == 1:
+        cdxj_line = cdxj_line[0].decode()
+
+    cdxjParts = cdxj_line.split(" ", 2)
     jObj = json.loads(cdxjParts[2])
     datetime = cdxjParts[1]
 
@@ -672,6 +770,7 @@ def show_uri(path, datetime=None):
     except Exception as e:
         print('Unknown exception occurred while fetching from ipfs.')
         print(e)
+        print(sys.exc_info()[0])
         return "An unknown exception occurred", 500
 
     if 'encryption_method' in jObj:
@@ -724,7 +823,7 @@ def show_uri(path, datetime=None):
     # Add ipwb header for additional SW logic
     newPayload = resp.get_data()
 
-    lineJSON = cdxjLine.split(' ', 2)[2]
+    lineJSON = cdxj_line.split(' ', 2)[2]
     mime = json.loads(lineJSON)['mime_type']
 
     if 'text/html' in mime:
@@ -868,6 +967,7 @@ def generateDaemonStatusButton():
     buttonHTML += f'<button id="daeAction">{buttonText}</button>'
 
     footer = '<script>assignStatusButtonHandlers()</script></body></html>'
+
     return Response(f'{statusPageHTML}{buttonHTML}{footer}')
 
 

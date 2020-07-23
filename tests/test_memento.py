@@ -16,7 +16,7 @@ import sys
 
 
 def getURIMsFromTimeMapInWARC(warcFilename):
-    ipwbTest.startReplay(warcFilename)
+    ipwbTest.start_replay(warcFilename)
 
     tmURI = 'http://localhost:5000/timemap/link/memento.us/'
     tm = urlopen(tmURI).read().decode('utf-8')
@@ -26,27 +26,26 @@ def getURIMsFromTimeMapInWARC(warcFilename):
         isAMemento = len(re.findall('rel=".*memento"', line)) > 0
         if isAMemento:
             urims.append(re.findall('<(.*)>', line)[0])
-    ipwbTest.stopReplay()
+    ipwbTest.stop_replay()
 
     return urims
 
 
 def getRelsFromURIMSinWARC(warc):
     urims = getURIMsFromTimeMapInWARC(warc)
-    ipwbTest.startReplay(warc)
+    ipwbTest.start_replay(warc)
 
     # Get Link header values for each memento
     linkHeaders = []
     for urim in urims:
         linkHeaders.append(urlopen(urim).info().get('Link'))
-    ipwbTest.stopReplay()
 
     relsForURIMs = []
     for linkHeader in linkHeaders:
         relForURIM = ipwbTest.extractRelationEntriesFromLinkTimeMap(linkHeader)
         relsForURIMs.append(relForURIM)
 
-    ipwbTest.stopReplay()
+    ipwbTest.stop_replay()
     return relsForURIMs
 
 
@@ -61,7 +60,7 @@ def getRelsFromURIMSinWARC(warc):
      '20181001123636', 400)
 ])
 def test_acceptdatetime_status(warc, lookup, acceptdatetime, status):
-    ipwbTest.startReplay(warc)
+    ipwbTest.start_replay(warc)
 
     headers = {'Accept-Datetime': acceptdatetime}
 
@@ -69,7 +68,7 @@ def test_acceptdatetime_status(warc, lookup, acceptdatetime, status):
                         allow_redirects=False, headers=headers)
     assert resp.status_code == status
 
-    ipwbTest.stopReplay()
+    ipwbTest.stop_replay()
 
 
 def test_mementoRelations_one():

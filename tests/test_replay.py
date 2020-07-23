@@ -18,7 +18,7 @@ import urllib
     ('HTTP404.warc', 'memento/20200202100000/memento.ca/', False),
     ('HTTP404.warc', 'loremipsum', False)])
 def test_replay_404(warc, lookup, has_md_header):
-    ipwbTest.startReplay(warc)
+    ipwbTest.start_replay(warc)
 
     resp = requests.get(f'http://localhost:5000/{lookup}',
                         allow_redirects=False)
@@ -30,7 +30,7 @@ def test_replay_404(warc, lookup, has_md_header):
     else:
         assert 'Memento-Datetime' not in resp.headers
 
-    ipwbTest.stopReplay()
+    ipwbTest.stop_replay()
 
 
 @pytest.mark.parametrize("warc,lookup,status,location", [
@@ -50,7 +50,7 @@ def test_replay_404(warc, lookup, has_md_header):
      'index.php?anotherval=ipsum&someval=lorem', 200, None),
 ])
 def test_replay_search(warc, lookup, status, location):
-    ipwbTest.startReplay(warc)
+    ipwbTest.start_replay(warc)
 
     resp = requests.get(f'http://localhost:5000/{lookup}',
                         allow_redirects=False)
@@ -58,11 +58,11 @@ def test_replay_search(warc, lookup, status, location):
     if location is not None:  # Allow for checks w/o redirects
         assert resp.headers.get('location') == location
 
-    ipwbTest.stopReplay()
+    ipwbTest.stop_replay()
 
 
 def test_replay_dated_memento():
-    ipwbTest.startReplay('salam-home.warc')
+    ipwbTest.start_replay('salam-home.warc')
 
     url = 'http://localhost:5000/memento/{}/cs.odu.edu/~salam/'
     dest = '/memento/20160305192247/cs.odu.edu/~salam/'
@@ -108,7 +108,7 @@ def test_replay_dated_memento():
     resp = requests.get(url.format('20160305192247'), allow_redirects=False)
     assert resp.status_code == 200
 
-    ipwbTest.stopReplay()
+    ipwbTest.stop_replay()
 
 
 @pytest.mark.skip(reason='not implemented')

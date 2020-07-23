@@ -57,7 +57,7 @@ def countCDXJEntries(cdxjData):
     return urimCount
 
 
-def startReplay(warc_filename):
+def start_replay(warc_filename):
     global p
     path_of_warc = os.path.join(
         Path(os.path.dirname(__file__)).parent,
@@ -77,7 +77,7 @@ def startReplay(warc_filename):
         f.write(cdxj)
 
 
-def stopReplay():
+def stop_replay():
     global p
     p.terminate()
 
