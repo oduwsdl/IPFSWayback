@@ -18,6 +18,7 @@ from urllib.error import URLError
 
 import json
 from .__init__ import __version__ as ipwb_version
+from . import settings
 
 from ipfshttpclient.exceptions import ConnectionError, AddressError
 from multiaddr.exceptions import StringParseError
@@ -27,11 +28,6 @@ from .exceptions import IPFSDaemonNotAvailable
 
 logger = logging.getLogger(__name__)
 
-
-IPFSAPI_MUTLIADDRESS = '/dns/localhost/tcp/5001/http'
-# or '/dns/{host}/tcp/{port}/http'
-# or '/ip4/{ipaddress}/tcp/{port}/http'
-# or '/ip6/{ipaddress}/tcp/{port}/http
 
 IPWBREPLAY_ADDRESS = 'localhost:5000'
 
@@ -47,8 +43,9 @@ log.setLevel(logging.ERROR)
 dt_pattern = re.compile(r"^(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?$")
 
 
-def create_ipfs_client(daemonMultiaddr=IPFSAPI_MUTLIADDRESS):
+def create_ipfs_client():
     """Create and return IPFS client."""
+    daemonMultiaddr = settings.App.config("ipfsapi")
     try:
         return ipfshttpclient.Client(daemonMultiaddr)
     except Exception as err:
@@ -56,19 +53,20 @@ def create_ipfs_client(daemonMultiaddr=IPFSAPI_MUTLIADDRESS):
 
 
 @functools.lru_cache()
-def ipfs_client(daemonMultiaddr=IPFSAPI_MUTLIADDRESS):
+def ipfs_client():
     """
     Create and cache IPFS client instance.
 
     Caching is the single difference between this and
     `create_ipfs_client()` above.
     """
-    return create_ipfs_client(daemonMultiaddr)
+    return create_ipfs_client()
 
 
-def check_daemon_is_alive(daemonMultiaddr=IPFSAPI_MUTLIADDRESS):
+def check_daemon_is_alive():
     """Ensure that the IPFS daemon is running via HTTP before proceeding"""
     client = ipfs_client()
+    daemonMultiaddr = settings.App.config("ipfsapi")
 
     try:
         # ConnectionError/AttributeError if IPFS daemon not running
@@ -246,14 +244,16 @@ def write_ipfs_config(json_to_write):
         f.write(json.dumps(json_to_write, indent=4, sort_keys=True))
 
 
-def get_ipfsapi_host_and_port(ipfs_json=None):
-    if not ipfs_json:
-        ipfs_json = read_ipfs_config()
+def get_ipfsapi_host_and_port():
+    daemon_address = settings.App.config("ipfsapi")
+    # format right now is "/dns/localhost/tcp/5001/http"
 
-    (scheme, host, protocol, port) = (
-        ipfs_json['Addresses']['API'][1:].split('/')
-    )
-    return host + ':' + port
+    (scheme, host, protocol, port, protocol2) = daemon_address[1:].split('/')
+    if protocol2 == "https" and port == "443":
+        # if https is used, rely on a 301/302 redirect response
+        return host
+    else:
+        return host + ':' + port
 
 
 def get_ipwb_replay_config(ipfs_json=None):

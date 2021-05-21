@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import ipfshttpclient
 import requests
 
-from ipwb import util
+from ipwb import util, settings
 
 
 @dataclasses.dataclass(frozen=True)
@@ -35,7 +35,7 @@ def fetch_ipfs_index(path: str) -> Optional[str]:
         return None
 
     try:
-        with ipfshttpclient.connect(util.IPFSAPI_MUTLIADDRESS) as client:
+        with ipfshttpclient.connect(settings.App.config("ipfsapi")) as client:
             return client.cat(path).decode('utf-8')
 
     except ipfshttpclient.exceptions.StatusError as err:

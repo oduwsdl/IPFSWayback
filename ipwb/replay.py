@@ -50,6 +50,7 @@ import base64
 
 from werkzeug.routing import BaseConverter
 from .__init__ import __version__ as ipwb_version
+from . import settings
 
 
 from flask import flash
@@ -134,18 +135,20 @@ class UnsupportedIPFSVersions(Exception):
 
 @app.route('/ipfsdaemon/<cmd>')
 def command_daemon(cmd):
+    local_daemon = ipwb_utils.is_localhosty(settings.App.config("ipfsapi"))
+
     if cmd == 'status':
         return generate_daemon_status_button()
-    elif cmd == 'start':
+    elif cmd == 'start' and local_daemon:
         subprocess.Popen(['ipfs', 'daemon'])
         return Response('IPFS daemon starting...')
 
-    elif cmd == 'stop':
+    elif cmd == 'stop' and local_daemon:
         try:
             ipfs_version = ipfs_client().version()['Version']
             if ipwb_utils.compare_versions(ipfs_version, '0.4.10') < 0:
                 raise UnsupportedIPFSVersions()
-            ipfs_client().shutdown()
+            ipfs_client().close()
         except (subprocess.CalledProcessError, UnsupportedIPFSVersions) as e:
             if os.name != 'nt':  # Big hammer
                 subprocess.call(['killall', 'ipfs'])
@@ -551,7 +554,7 @@ def all_exception_handler(error):
 @app.route('/ipwbadmin', strict_slashes=False)
 def show_admin():
     status = {'ipwb_version': ipwb_version,
-              'ipfs_endpoint': ipwb_utils.IPFSAPI_MUTLIADDRESS}
+              'ipfs_endpoint': settings.App.config("ipfsapi")}
     index_file = ipwb_utils.get_ipwb_replay_index_path()
 
     memento_info = calculate_memento_info_in_index(index_file)
@@ -600,7 +603,7 @@ def show_landing_page():
 
 def show_uri(path, datetime=None):
     try:
-        ipwb_utils.check_daemon_is_alive(ipwb_utils.IPFSAPI_MUTLIADDRESS)
+        ipwb_utils.check_daemon_is_alive()
 
     except IPFSDaemonNotAvailable:
         errStr = ('IPFS daemon not running. '
